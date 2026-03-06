@@ -94,6 +94,13 @@ body {
   justify-content: center;
 }
 
+.center-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 28px;
+}
+
 .clock {
   font-size: clamp(4rem, 10vw, 8rem);
   font-weight: 200;
@@ -112,7 +119,6 @@ body {
 
 .one-thing-section {
   text-align: center;
-  margin-bottom: 24px;
 }
 
 .one-thing-prompt {
