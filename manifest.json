@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Dashboard",
+  "description": "Personal new tab dashboard with daily photos, focus mode, and todos",
+  "version": "1.0.0",
+  "chrome_url_overrides": {
+    "newtab": "index.html"
+  },
+  "action": {
+    "default_title": "Open Dashboard"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": [],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
