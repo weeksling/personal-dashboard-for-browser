@@ -13,7 +13,9 @@ function getTodayString() {
 function getDefaultState() {
   return {
     currentDate: getTodayString(),
+    userName: null,
     oneThing: null,
+    oneThingDone: false,
     cachedPhoto: null,
     todos: [],
     showTime: true,
@@ -40,9 +42,11 @@ function saveState() {
 function handleDayChange(newDate) {
   state.currentDate = newDate;
   state.oneThing = null;
+  state.oneThingDone = false;
   state.cachedPhoto = null;
   saveState();
   loadDailyPhoto();
+  initGreeting();
   initOneThing();
 }
 
@@ -60,6 +64,67 @@ function escapeHtml(str) {
   const div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
+}
+
+// ─── Greeting ───
+
+function getTimeOfDayGreeting() {
+  const hour = new Date().getHours();
+  if (hour >= 5 && hour < 12) return 'Good morning';
+  if (hour >= 12 && hour < 17) return 'Good afternoon';
+  return 'Good evening';
+}
+
+function initGreeting() {
+  const section = document.getElementById('greeting-section');
+  if (state.userName) {
+    renderGreetingDisplay(section);
+  } else {
+    renderGreetingPrompt(section);
+  }
+}
+
+function renderGreetingPrompt(container) {
+  container.innerHTML = `
+    <p class="greeting-prompt">What should we call you?</p>
+    <input type="text" class="greeting-input" id="greeting-input" autocomplete="off">
+  `;
+  const input = document.getElementById('greeting-input');
+  setTimeout(() => input.focus(), 100);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && input.value.trim()) {
+      state.userName = input.value.trim();
+      saveState();
+      renderGreetingDisplay(container);
+    }
+  });
+}
+
+function renderGreetingDisplay(container) {
+  const greeting = getTimeOfDayGreeting();
+  container.innerHTML = `
+    <p class="greeting-display" id="greeting-display" title="Click to edit name">${greeting}, ${escapeHtml(state.userName)}.</p>
+  `;
+  document.getElementById('greeting-display').addEventListener('click', () => {
+    const prev = state.userName;
+    state.userName = null;
+    saveState();
+    renderGreetingPrompt(container);
+    const input = document.getElementById('greeting-input');
+    if (input && prev) input.value = prev;
+  });
+}
+
+// ─── Date Display ───
+
+function updateDateDisplay() {
+  const el = document.getElementById('date-display');
+  const now = new Date();
+  el.textContent = now.toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+  });
 }
 
 // ─── Clock ───
@@ -81,6 +146,15 @@ function updateClock() {
   const hours = now.getHours() % 12 || 12;
   const minutes = String(now.getMinutes()).padStart(2, '0');
   clock.textContent = `${hours}:${minutes}`;
+
+  // Update greeting text (time-of-day may change)
+  const greetingEl = document.getElementById('greeting-display');
+  if (greetingEl && state.userName) {
+    greetingEl.textContent = `${getTimeOfDayGreeting()}, ${state.userName}.`;
+  }
+
+  // Update date
+  updateDateDisplay();
 
   // Day change detection
   const currentDate = getTodayString();
@@ -194,13 +268,35 @@ function renderOneThingPrompt(container, prefill) {
 }
 
 function renderOneThingDisplay(container) {
+  const doneClass = state.oneThingDone ? 'done' : '';
   container.innerHTML = `
-    <p class="one-thing-display" id="one-thing-display" title="Click to edit">${escapeHtml(state.oneThing)}</p>
+    <div class="one-thing-row ${doneClass}" id="one-thing-row">
+      <button class="one-thing-done-btn" id="one-thing-done-btn" title="Mark as done">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          ${state.oneThingDone ? '<polyline points="9 12 11.5 14.5 16 9.5"></polyline>' : ''}
+        </svg>
+      </button>
+      <p class="one-thing-display" id="one-thing-display" title="Click to edit">${escapeHtml(state.oneThing)}</p>
+    </div>
   `;
-  // Click to re-edit (pre-fill old value)
+
+  // Done button
+  document.getElementById('one-thing-done-btn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    state.oneThingDone = !state.oneThingDone;
+    saveState();
+    renderOneThingDisplay(container);
+    if (state.oneThingDone) {
+      document.getElementById('one-thing-row').classList.add('just-completed');
+    }
+  });
+
+  // Click text to re-edit (pre-fill old value)
   document.getElementById('one-thing-display').addEventListener('click', () => {
     const prev = state.oneThing;
     state.oneThing = null;
+    state.oneThingDone = false;
     saveState();
     renderOneThingPrompt(container, prev);
   });
@@ -350,6 +446,8 @@ function initToggles() {
 
 document.addEventListener('DOMContentLoaded', () => {
   loadDailyPhoto();
+  initGreeting();
+  updateDateDisplay();
   initClock();
   initOneThing();
   initTodos();

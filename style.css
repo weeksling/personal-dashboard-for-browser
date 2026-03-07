@@ -98,7 +98,61 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 28px;
+  gap: 4px;
+}
+
+/* ─── Greeting ─── */
+
+.greeting-section {
+  text-align: center;
+}
+
+.greeting-prompt {
+  font-size: 1.2rem;
+  font-weight: 300;
+  opacity: 0.8;
+  margin-bottom: 10px;
+}
+
+.greeting-input {
+  background: transparent;
+  border: none;
+  border-bottom: 1.5px solid rgba(255, 255, 255, 0.5);
+  color: #fff;
+  font-size: 1.3rem;
+  text-align: center;
+  outline: none;
+  width: 240px;
+  padding: 6px 4px;
+  font-weight: 300;
+  font-family: inherit;
+  transition: border-color 0.3s ease;
+}
+
+.greeting-input:focus {
+  border-bottom-color: rgba(255, 255, 255, 0.8);
+}
+
+.greeting-display {
+  font-size: 1.3rem;
+  font-weight: 300;
+  opacity: 0.8;
+  cursor: pointer;
+  transition: opacity 0.3s ease;
+  margin-bottom: 4px;
+}
+
+.greeting-display:hover {
+  opacity: 0.5;
+}
+
+/* ─── Date Display ─── */
+
+.date-display {
+  font-size: 0.95rem;
+  font-weight: 300;
+  opacity: 0.55;
+  margin-bottom: 8px;
 }
 
 .clock {
@@ -119,6 +173,7 @@ body {
 
 .one-thing-section {
   text-align: center;
+  margin-top: 12px;
 }
 
 .one-thing-prompt {
@@ -126,6 +181,49 @@ body {
   font-weight: 300;
   opacity: 0.8;
   margin-bottom: 12px;
+}
+
+.one-thing-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.one-thing-done-btn {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.3s ease, transform 0.3s ease;
+  flex-shrink: 0;
+}
+
+.one-thing-done-btn:hover {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.one-thing-row.done .one-thing-done-btn {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.one-thing-row.done .one-thing-display {
+  text-decoration: line-through;
+  opacity: 0.5;
+}
+
+.one-thing-row.just-completed .one-thing-done-btn {
+  animation: donePulse 0.4s ease-out;
+}
+
+@keyframes donePulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.3); }
+  100% { transform: scale(1); }
 }
 
 .one-thing-input {
