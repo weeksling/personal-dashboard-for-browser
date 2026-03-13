@@ -178,8 +178,10 @@ function renderGreetingDisplay(container) {
 
 function updateDateDisplay() {
   const el = document.getElementById('date-display');
-  const now = new Date();
-  el.textContent = now.toLocaleDateString('en-US', {
+  const dateToShow = isViewingToday()
+    ? new Date()
+    : new Date(viewingDate + 'T12:00:00');
+  el.textContent = dateToShow.toLocaleDateString('en-US', {
     weekday: 'long',
     month: 'long',
     day: 'numeric',
@@ -332,6 +334,7 @@ function navigateToToday() {
 }
 
 function renderViewingState() {
+  updateDateDisplay();
   initOneThing();
   renderTodos();
 }
