@@ -2,6 +2,7 @@
 
 const UNSPLASH_ACCESS_KEY = 'qKwQibZuaKVEoeuYCifumIW5YzTzvf1HTpKpEfvkVIo';
 const STORAGE_KEY = 'dashboard';
+const ARCHIVE_KEY = 'dashboard_archive';
 const MAX_TODOS = 5;
 
 // ─── State Management ───
@@ -40,17 +41,71 @@ function saveState() {
 }
 
 function handleDayChange(newDate) {
+  // Archive the current day's data before resetting
+  const hasContent = state.oneThing || (state.todos && state.todos.length > 0);
+  if (hasContent) {
+    archiveDay(state.currentDate, {
+      todos: [...state.todos],
+      oneThing: state.oneThing,
+      oneThingDone: state.oneThingDone,
+    });
+  }
+
+  // Carry forward incomplete todos into the new day
+  const carryOver = (state.todos || [])
+    .filter(t => !t.done)
+    .map(t => ({ id: Date.now() + Math.random(), text: t.text, done: false }));
+
   state.currentDate = newDate;
   state.oneThing = null;
   state.oneThingDone = false;
   state.cachedPhoto = null;
+  state.todos = carryOver;
+  viewingDate = newDate;
   saveState();
   loadDailyPhoto();
   initGreeting();
   initOneThing();
+  renderTodos();
 }
 
 let state = loadState();
+let viewingDate = getTodayString(); // runtime only, always starts on today
+
+// ─── Archive Management ───
+
+function loadArchive() {
+  try {
+    const raw = localStorage.getItem(ARCHIVE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveArchive(archive) {
+  localStorage.setItem(ARCHIVE_KEY, JSON.stringify(archive));
+}
+
+function archiveDay(dateStr, data) {
+  const archive = loadArchive();
+  archive[dateStr] = data;
+  saveArchive(archive);
+}
+
+function getArchivedDates() {
+  const archive = loadArchive();
+  return Object.keys(archive).sort();
+}
+
+function getArchivedDay(dateStr) {
+  const archive = loadArchive();
+  return archive[dateStr] || null;
+}
+
+function isViewingToday() {
+  return viewingDate === getTodayString();
+}
 
 // Check for day change on load
 const today = getTodayString();
@@ -238,15 +293,125 @@ function refreshPhoto() {
   fetchNewPhoto();
 }
 
+// ─── Date Navigation ───
+
+function navigateToPreviousDate() {
+  const dates = getArchivedDates();
+  for (let i = dates.length - 1; i >= 0; i--) {
+    if (dates[i] < viewingDate) {
+      viewingDate = dates[i];
+      renderViewingState();
+      return;
+    }
+  }
+}
+
+function navigateToNextDate() {
+  const dates = getArchivedDates();
+  const today = getTodayString();
+
+  for (let i = 0; i < dates.length; i++) {
+    if (dates[i] > viewingDate && dates[i] < today) {
+      viewingDate = dates[i];
+      renderViewingState();
+      return;
+    }
+  }
+  // No more archived dates before today — jump to today
+  viewingDate = today;
+  renderViewingState();
+}
+
+function navigateToToday() {
+  viewingDate = getTodayString();
+  renderViewingState();
+}
+
+function renderViewingState() {
+  initOneThing();
+  renderTodos();
+}
+
+function formatViewingDate(dateStr) {
+  const date = new Date(dateStr + 'T12:00:00');
+  return date.toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+function renderDateNav() {
+  const dates = getArchivedDates();
+  const hasPrev = dates.some(d => d < viewingDate);
+  const viewing = !isViewingToday();
+
+  let html = '<div class="date-nav">';
+
+  if (hasPrev) {
+    html += `<button class="date-nav-btn" id="nav-prev" title="Previous day">&lsaquo;</button>`;
+  }
+
+  if (viewing) {
+    html += `<span class="date-nav-label">${formatViewingDate(viewingDate)}</span>`;
+    html += `<button class="date-nav-btn" id="nav-next" title="Next day">&rsaquo;</button>`;
+    html += `<button class="date-nav-btn" id="nav-today" title="Back to today">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="13 19 22 12 13 5"></polyline>
+        <polyline points="2 19 11 12 2 5"></polyline>
+      </svg>
+    </button>`;
+  }
+
+  html += '</div>';
+  return html;
+}
+
+function bindDateNavEvents() {
+  const prevBtn = document.getElementById('nav-prev');
+  const nextBtn = document.getElementById('nav-next');
+  const todayBtn = document.getElementById('nav-today');
+
+  if (prevBtn) prevBtn.addEventListener('click', navigateToPreviousDate);
+  if (nextBtn) nextBtn.addEventListener('click', navigateToNextDate);
+  if (todayBtn) todayBtn.addEventListener('click', navigateToToday);
+}
+
 // ─── One Thing ───
 
 function initOneThing() {
   const section = document.getElementById('one-thing-section');
+
+  if (!isViewingToday()) {
+    const archived = getArchivedDay(viewingDate);
+    if (archived && archived.oneThing) {
+      renderOneThingArchived(section, archived);
+    } else {
+      section.innerHTML = '';
+    }
+    return;
+  }
+
   if (state.oneThing) {
     renderOneThingDisplay(section);
   } else {
     renderOneThingPrompt(section);
   }
+}
+
+function renderOneThingArchived(container, archived) {
+  const doneClass = archived.oneThingDone ? 'done' : '';
+  container.innerHTML = `
+    <div class="one-thing-row ${doneClass}">
+      <button class="one-thing-done-btn" disabled style="cursor: default;">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          ${archived.oneThingDone ? '<polyline points="9 12 11.5 14.5 16 9.5"></polyline>' : ''}
+        </svg>
+      </button>
+      <p class="one-thing-display" style="cursor: default;">${escapeHtml(archived.oneThing)}</p>
+    </div>
+  `;
 }
 
 function renderOneThingPrompt(container, prefill) {
@@ -310,46 +475,77 @@ function initTodos() {
 
 function renderTodos() {
   const section = document.getElementById('todo-section');
+  const viewing = !isViewingToday();
+  const archived = viewing ? getArchivedDay(viewingDate) : null;
+  const todos = viewing ? (archived ? archived.todos : []) : state.todos;
 
-  // If toggled off, collapse
-  if (!state.showTodos) {
+  // If toggled off and viewing today, collapse
+  if (!state.showTodos && !viewing) {
     section.classList.add('collapsed');
     return;
   }
   section.classList.remove('collapsed');
 
-  // If empty, show just the add input
-  if (state.todos.length === 0) {
-    section.innerHTML = `
-      <div class="todo-list">
-        <div class="todo-item">
-          <input type="text" class="todo-add-input" id="todo-new-input" placeholder="+ Add a task" autocomplete="off">
+  if (viewing) {
+    section.classList.add('viewing-archive');
+  } else {
+    section.classList.remove('viewing-archive');
+  }
+
+  let html = renderDateNav();
+
+  // If no todos to show
+  if (todos.length === 0) {
+    if (viewing) {
+      html += '<div class="todo-list"><p class="todo-empty-archive">No tasks this day.</p></div>';
+    } else {
+      html += `
+        <div class="todo-list">
+          <div class="todo-item">
+            <input type="text" class="todo-add-input" id="todo-new-input" placeholder="+ Add a task" autocomplete="off">
+          </div>
         </div>
-      </div>
-    `;
-    bindNewTodoInput();
+      `;
+    }
+    section.innerHTML = html;
+    if (!viewing) bindNewTodoInput();
+    bindDateNavEvents();
     return;
   }
 
-  let html = '<div class="todo-header">';
-  html += `<button class="todo-collapse" id="collapse-todos" title="Hide todos">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <line x1="5" y1="12" x2="19" y2="12"></line>
-    </svg>
-  </button>`;
-  html += '</div><ul class="todo-list">';
+  // Collapse button (today only)
+  if (!viewing) {
+    html += '<div class="todo-header">';
+    html += `<button class="todo-collapse" id="collapse-todos" title="Hide todos">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="5" y1="12" x2="19" y2="12"></line>
+      </svg>
+    </button>`;
+    html += '</div>';
+  }
 
-  state.todos.forEach((todo, i) => {
-    html += `
-      <li class="todo-item ${todo.done ? 'done' : ''}">
-        <input type="checkbox" class="todo-checkbox" ${todo.done ? 'checked' : ''} data-index="${i}">
-        <span class="todo-text">${escapeHtml(todo.text)}</span>
-        <button class="todo-remove" data-index="${i}">&times;</button>
-      </li>
-    `;
+  html += '<ul class="todo-list">';
+
+  todos.forEach((todo, i) => {
+    if (viewing) {
+      html += `
+        <li class="todo-item ${todo.done ? 'done' : ''}">
+          <input type="checkbox" class="todo-checkbox" ${todo.done ? 'checked' : ''} disabled>
+          <span class="todo-text">${escapeHtml(todo.text)}</span>
+        </li>
+      `;
+    } else {
+      html += `
+        <li class="todo-item ${todo.done ? 'done' : ''}">
+          <input type="checkbox" class="todo-checkbox" ${todo.done ? 'checked' : ''} data-index="${i}">
+          <span class="todo-text">${escapeHtml(todo.text)}</span>
+          <button class="todo-remove" data-index="${i}">&times;</button>
+        </li>
+      `;
+    }
   });
 
-  if (state.todos.length < MAX_TODOS) {
+  if (!viewing && todos.length < MAX_TODOS) {
     html += `
       <li class="todo-item">
         <input type="text" class="todo-add-input" id="todo-new-input" placeholder="+ Add a task" autocomplete="off">
@@ -360,35 +556,39 @@ function renderTodos() {
   html += '</ul>';
   section.innerHTML = html;
 
-  // Bind events
-  section.querySelectorAll('.todo-checkbox').forEach((cb) => {
-    cb.addEventListener('change', (e) => {
-      const idx = parseInt(e.target.dataset.index);
-      state.todos[idx].done = e.target.checked;
-      saveState();
-      renderTodos();
+  // Bind events only for today view
+  if (!viewing) {
+    section.querySelectorAll('.todo-checkbox').forEach((cb) => {
+      cb.addEventListener('change', (e) => {
+        const idx = parseInt(e.target.dataset.index);
+        state.todos[idx].done = e.target.checked;
+        saveState();
+        renderTodos();
+      });
     });
-  });
 
-  section.querySelectorAll('.todo-remove').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      const idx = parseInt(e.target.closest('.todo-remove').dataset.index);
-      state.todos.splice(idx, 1);
-      saveState();
-      renderTodos();
+    section.querySelectorAll('.todo-remove').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        const idx = parseInt(e.target.closest('.todo-remove').dataset.index);
+        state.todos.splice(idx, 1);
+        saveState();
+        renderTodos();
+      });
     });
-  });
 
-  const collapseBtn = document.getElementById('collapse-todos');
-  if (collapseBtn) {
-    collapseBtn.addEventListener('click', () => {
-      state.showTodos = false;
-      saveState();
-      renderTodos();
-    });
+    const collapseBtn = document.getElementById('collapse-todos');
+    if (collapseBtn) {
+      collapseBtn.addEventListener('click', () => {
+        state.showTodos = false;
+        saveState();
+        renderTodos();
+      });
+    }
+
+    bindNewTodoInput();
   }
 
-  bindNewTodoInput();
+  bindDateNavEvents();
 }
 
 function bindNewTodoInput() {
