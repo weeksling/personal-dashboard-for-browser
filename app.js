@@ -545,7 +545,7 @@ function renderTodos() {
       html += `
         <li class="todo-item ${todo.done ? 'done' : ''}">
           <input type="checkbox" class="todo-checkbox" ${todo.done ? 'checked' : ''} data-index="${i}">
-          <span class="todo-text">${escapeHtml(todo.text)}</span>
+          <span class="todo-text" data-index="${i}" title="Click to edit">${escapeHtml(todo.text)}</span>
           <button class="todo-remove" data-index="${i}">&times;</button>
         </li>
       `;
@@ -580,6 +580,34 @@ function renderTodos() {
         state.todos.splice(idx, 1);
         saveState();
         renderTodos();
+      });
+    });
+
+    section.querySelectorAll('.todo-text[data-index]').forEach((span) => {
+      span.addEventListener('click', (e) => {
+        const idx = parseInt(span.dataset.index);
+        const li = span.closest('.todo-item');
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'todo-edit-input';
+        input.value = state.todos[idx].text;
+        span.replaceWith(input);
+        input.focus();
+        input.select();
+
+        const save = () => {
+          const val = input.value.trim();
+          if (val) {
+            state.todos[idx].text = val;
+            saveState();
+          }
+          renderTodos();
+        };
+        input.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') { e.preventDefault(); save(); }
+          if (e.key === 'Escape') renderTodos();
+        });
+        input.addEventListener('blur', save);
       });
     });
 
