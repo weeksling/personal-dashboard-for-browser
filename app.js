@@ -8,7 +8,11 @@ const MAX_TODOS = 5;
 // ─── State Management ───
 
 function getTodayString() {
-  return new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 function getDefaultState() {
@@ -174,8 +178,10 @@ function renderGreetingDisplay(container) {
 
 function updateDateDisplay() {
   const el = document.getElementById('date-display');
-  const now = new Date();
-  el.textContent = now.toLocaleDateString('en-US', {
+  const dateToShow = isViewingToday()
+    ? new Date()
+    : new Date(viewingDate + 'T12:00:00');
+  el.textContent = dateToShow.toLocaleDateString('en-US', {
     weekday: 'long',
     month: 'long',
     day: 'numeric',
@@ -328,6 +334,7 @@ function navigateToToday() {
 }
 
 function renderViewingState() {
+  updateDateDisplay();
   initOneThing();
   renderTodos();
 }
@@ -538,7 +545,7 @@ function renderTodos() {
       html += `
         <li class="todo-item ${todo.done ? 'done' : ''}">
           <input type="checkbox" class="todo-checkbox" ${todo.done ? 'checked' : ''} data-index="${i}">
-          <span class="todo-text">${escapeHtml(todo.text)}</span>
+          <span class="todo-text" data-index="${i}" title="Click to edit">${escapeHtml(todo.text)}</span>
           <button class="todo-remove" data-index="${i}">&times;</button>
         </li>
       `;
@@ -573,6 +580,34 @@ function renderTodos() {
         state.todos.splice(idx, 1);
         saveState();
         renderTodos();
+      });
+    });
+
+    section.querySelectorAll('.todo-text[data-index]').forEach((span) => {
+      span.addEventListener('click', (e) => {
+        const idx = parseInt(span.dataset.index);
+        const li = span.closest('.todo-item');
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'todo-edit-input';
+        input.value = state.todos[idx].text;
+        span.replaceWith(input);
+        input.focus();
+        input.select();
+
+        const save = () => {
+          const val = input.value.trim();
+          if (val) {
+            state.todos[idx].text = val;
+            saveState();
+          }
+          renderTodos();
+        };
+        input.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') { e.preventDefault(); save(); }
+          if (e.key === 'Escape') renderTodos();
+        });
+        input.addEventListener('blur', save);
       });
     });
 
