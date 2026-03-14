@@ -22,6 +22,8 @@ function getDefaultState() {
     oneThing: null,
     oneThingDone: false,
     cachedPhoto: null,
+    cachedCoords: null,
+    cachedWeather: null,
     todos: [],
     showTime: true,
     showTodos: true,
@@ -645,6 +647,88 @@ function bindNewTodoInput() {
   });
 }
 
+// ─── Weather ───
+
+const WEATHER_CACHE_MS = 30 * 60 * 1000; // 30 minutes
+
+const WMO_DESCRIPTIONS = {
+  0: 'Clear',
+  1: 'Mostly Clear', 2: 'Partly Cloudy', 3: 'Overcast',
+  45: 'Foggy', 48: 'Foggy',
+  51: 'Light Drizzle', 53: 'Drizzle', 55: 'Heavy Drizzle',
+  56: 'Freezing Drizzle', 57: 'Freezing Drizzle',
+  61: 'Light Rain', 63: 'Rain', 65: 'Heavy Rain',
+  66: 'Freezing Rain', 67: 'Freezing Rain',
+  71: 'Light Snow', 73: 'Snow', 75: 'Heavy Snow',
+  77: 'Snow Grains',
+  80: 'Light Showers', 81: 'Showers', 82: 'Heavy Showers',
+  85: 'Snow Showers', 86: 'Heavy Snow Showers',
+  95: 'Thunderstorm',
+  96: 'Thunderstorm', 99: 'Thunderstorm',
+};
+
+function getWeatherDescription(code) {
+  return WMO_DESCRIPTIONS[code] || 'Unknown';
+}
+
+function initWeather() {
+  // If we have a fresh cache, render immediately
+  if (state.cachedWeather && (Date.now() - state.cachedWeather.timestamp < WEATHER_CACHE_MS)) {
+    renderWeather(state.cachedWeather);
+  }
+
+  // Use cached coords if available, otherwise request geolocation
+  if (state.cachedCoords) {
+    fetchWeather(state.cachedCoords.lat, state.cachedCoords.lng);
+  } else if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        state.cachedCoords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        saveState();
+        fetchWeather(state.cachedCoords.lat, state.cachedCoords.lng);
+      },
+      () => {
+        // Permission denied or error — do nothing
+      }
+    );
+  }
+}
+
+function fetchWeather(lat, lng) {
+  // Skip fetch if cache is still fresh
+  if (state.cachedWeather && (Date.now() - state.cachedWeather.timestamp < WEATHER_CACHE_MS)) {
+    return;
+  }
+
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,weather_code`;
+
+  fetch(url)
+    .then((r) => {
+      if (!r.ok) throw new Error(`Weather API error: ${r.status}`);
+      return r.json();
+    })
+    .then((data) => {
+      const weather = {
+        temp: Math.round(data.current.temperature_2m),
+        code: data.current.weather_code,
+        timestamp: Date.now(),
+      };
+      state.cachedWeather = weather;
+      saveState();
+      renderWeather(weather);
+    })
+    .catch(() => {
+      // API failure — silently ignore
+    });
+}
+
+function renderWeather(weather) {
+  const el = document.getElementById('weather-display');
+  const desc = getWeatherDescription(weather.code);
+  el.textContent = `${weather.temp}° ${desc}`;
+  el.classList.add('visible');
+}
+
 // ─── Toggle Icons & Proximity Fade ───
 
 function initToggles() {
@@ -685,6 +769,7 @@ document.addEventListener('DOMContentLoaded', () => {
   updateDateDisplay();
   initClock();
   initOneThing();
+  initWeather();
   initTodos();
   initToggles();
 });
