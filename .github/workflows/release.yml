@@ -6,6 +6,8 @@ on:
 
 jobs:
   release:
+    # Don't run on version-bump commits to avoid infinite loops
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -13,33 +15,41 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Extract version
-        id: version
+      - name: Bump minor version in manifest.json
+        id: bump
         run: |
-          VERSION=$(grep '"version"' manifest.json | sed 's/.*: *"\(.*\)".*/\1/')
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          CURRENT=$(grep '"version"' manifest.json | sed 's/.*"\([0-9.]*\)".*/\1/')
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+          NEW="${MAJOR}.$((MINOR + 1)).0"
+          sed -i "s/\"version\": \"$CURRENT\"/\"version\": \"$NEW\"/" manifest.json
+          echo "version=$NEW" >> "$GITHUB_OUTPUT"
 
-      - name: Check if release already exists
-        id: check
+      - name: Commit version bump
         run: |
-          if gh release view "v${{ steps.version.outputs.version }}" > /dev/null 2>&1; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-          fi
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add manifest.json
+          git commit -m "Bump version to ${{ steps.bump.outputs.version }} [skip ci]"
+          git push
 
       - name: Build zip
-        if: steps.check.outputs.exists == 'false'
         run: bash build.sh
 
       - name: Create GitHub release
-        if: steps.check.outputs.exists == 'false'
         run: |
-          gh release create "v${{ steps.version.outputs.version }}" \
-            "dashboard-v${{ steps.version.outputs.version }}.zip" \
-            --title "v${{ steps.version.outputs.version }}" \
+          gh release create "v${{ steps.bump.outputs.version }}" \
+            "dashboard-v${{ steps.bump.outputs.version }}.zip" \
+            --title "v${{ steps.bump.outputs.version }}" \
             --generate-notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish to Chrome Web Store
+        continue-on-error: true
+        uses: nicolo-ribaudo/chws-upload-action@v1
+        with:
+          extension-id: ${{ secrets.CHROME_EXTENSION_ID }}
+          client-id: ${{ secrets.CHROME_CLIENT_ID }}
+          client-secret: ${{ secrets.CHROME_CLIENT_SECRET }}
+          refresh-token: ${{ secrets.CHROME_REFRESH_TOKEN }}
+          zip-path: "dashboard-v${{ steps.bump.outputs.version }}.zip"
