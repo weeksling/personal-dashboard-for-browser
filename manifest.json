@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Dashboard",
   "description": "Personal new tab dashboard with daily photos, focus mode, and todos",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "chrome_url_overrides": {
     "newtab": "index.html"
   },
