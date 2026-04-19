@@ -3,7 +3,7 @@
 const UNSPLASH_ACCESS_KEY = 'qKwQibZuaKVEoeuYCifumIW5YzTzvf1HTpKpEfvkVIo';
 const STORAGE_KEY = 'dashboard';
 const ARCHIVE_KEY = 'dashboard_archive';
-const MAX_TODOS = 5;
+const MAX_TODOS = 10;
 
 // ─── State Management ───
 
@@ -27,16 +27,27 @@ function getDefaultState() {
     todos: [],
     showTime: true,
     showTodos: true,
+    cardOpacityOverride: { clock: null, todos: null },
+    cardOpacityOverridePhotoUrl: null,
   };
 }
+
+const CARD_DEFAULT_OPACITY = { clock: 0.25, todos: 0.30 };
+const CARD_CONTRAST_TARGET = { clock: 3.0, todos: 4.5 };
+const CARD_SELECTOR = { clock: '#center-inner', todos: '#todo-section' };
 
 function loadState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return getDefaultState();
     const saved = JSON.parse(raw);
-    // Merge with defaults so new fields are always present
-    return { ...getDefaultState(), ...saved };
+    const defaults = getDefaultState();
+    const merged = { ...defaults, ...saved };
+    merged.cardOpacityOverride = {
+      ...defaults.cardOpacityOverride,
+      ...(saved.cardOpacityOverride || {}),
+    };
+    return merged;
   } catch {
     return getDefaultState();
   }
@@ -67,6 +78,8 @@ function handleDayChange(newDate) {
   state.oneThingDone = false;
   state.cachedPhoto = null;
   state.todos = carryOver;
+  state.cardOpacityOverride = { clock: null, todos: null };
+  state.cardOpacityOverridePhotoUrl = null;
   viewingDate = newDate;
   saveState();
   loadDailyPhoto();
@@ -271,11 +284,26 @@ function fetchNewPhoto() {
 function applyPhoto(photo) {
   const bg = document.getElementById('bg');
 
-  // Preload before showing
+  // A new image invalidates previous user opacity overrides + auto values.
+  // Compare against the photo URL the existing overrides were set for so
+  // overrides survive a same-photo page reload but reset on refresh/new day.
+  if (state.cardOpacityOverridePhotoUrl !== photo.url) {
+    state.cardOpacityOverride = { clock: null, todos: null };
+    state.cardOpacityOverridePhotoUrl = null;
+    autoCardOpacity = { clock: null, todos: null };
+    saveState();
+    applyAllCardOpacities();
+  }
+  lastSampledPhotoUrl = photo.url;
+
+  // Preload with CORS so we can also sample pixels on the same Image instance
   const img = new Image();
+  img.crossOrigin = 'anonymous';
   img.onload = () => {
     bg.style.backgroundImage = `url(${photo.url})`;
     bg.classList.remove('fading');
+    lastSampledImage = img;
+    runAutoContrastFor(img);
   };
   img.onerror = () => {
     bg.style.background = 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)';
@@ -484,6 +512,7 @@ function initTodos() {
 
 function renderTodos() {
   const section = document.getElementById('todo-section');
+  const content = document.getElementById('todo-content');
   const viewing = !isViewingToday();
   const archived = viewing ? getArchivedDay(viewingDate) : null;
   const todos = viewing ? (archived ? archived.todos : []) : state.todos;
@@ -516,7 +545,7 @@ function renderTodos() {
         </div>
       `;
     }
-    section.innerHTML = html;
+    content.innerHTML = html;
     if (!viewing) bindNewTodoInput();
     bindDateNavEvents();
     return;
@@ -563,11 +592,11 @@ function renderTodos() {
   }
 
   html += '</ul>';
-  section.innerHTML = html;
+  content.innerHTML = html;
 
   // Bind events only for today view
   if (!viewing) {
-    section.querySelectorAll('.todo-checkbox').forEach((cb) => {
+    content.querySelectorAll('.todo-checkbox').forEach((cb) => {
       cb.addEventListener('change', (e) => {
         const idx = parseInt(e.target.dataset.index);
         state.todos[idx].done = e.target.checked;
@@ -576,7 +605,7 @@ function renderTodos() {
       });
     });
 
-    section.querySelectorAll('.todo-remove').forEach((btn) => {
+    content.querySelectorAll('.todo-remove').forEach((btn) => {
       btn.addEventListener('click', (e) => {
         const idx = parseInt(e.target.closest('.todo-remove').dataset.index);
         state.todos.splice(idx, 1);
@@ -585,7 +614,7 @@ function renderTodos() {
       });
     });
 
-    section.querySelectorAll('.todo-text[data-index]').forEach((span) => {
+    content.querySelectorAll('.todo-text[data-index]').forEach((span) => {
       span.addEventListener('click', (e) => {
         const idx = parseInt(span.dataset.index);
         const li = span.closest('.todo-item');
@@ -729,6 +758,200 @@ function renderWeather(weather) {
   el.classList.add('visible');
 }
 
+// ─── Per-card Opacity Control ───
+
+let autoCardOpacity = { clock: null, todos: null };
+
+function getCardElement(card) {
+  return document.querySelector(CARD_SELECTOR[card]);
+}
+
+function getEffectiveOpacity(card) {
+  const override = state.cardOpacityOverride[card];
+  if (override !== null && override !== undefined) return override;
+  if (autoCardOpacity[card] !== null) return autoCardOpacity[card];
+  return CARD_DEFAULT_OPACITY[card];
+}
+
+function applyCardOpacity(card) {
+  const el = getCardElement(card);
+  if (!el) return;
+  const value = getEffectiveOpacity(card);
+  el.style.setProperty('--card-opacity', value.toFixed(3));
+  const slider = el.querySelector('.opacity-slider');
+  if (slider && document.activeElement !== slider) {
+    slider.value = String(value);
+  }
+}
+
+function applyAllCardOpacities() {
+  Object.keys(CARD_SELECTOR).forEach(applyCardOpacity);
+}
+
+function initOpacityControls() {
+  document.querySelectorAll('.opacity-control').forEach((control) => {
+    const card = control.dataset.card;
+    if (!card) return;
+    const dial = control.querySelector('.opacity-dial');
+    const slider = control.querySelector('.opacity-slider');
+
+    slider.value = String(getEffectiveOpacity(card));
+
+    dial.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const wasExpanded = control.classList.contains('expanded');
+      // Collapse all other open controls first
+      document.querySelectorAll('.opacity-control.expanded').forEach((c) => {
+        if (c !== control) c.classList.remove('expanded');
+      });
+      control.classList.toggle('expanded', !wasExpanded);
+      if (!wasExpanded) {
+        slider.value = String(getEffectiveOpacity(card));
+      }
+    });
+
+    // Prevent collapse when clicking within the slider
+    slider.addEventListener('click', (e) => e.stopPropagation());
+    slider.addEventListener('mousedown', (e) => e.stopPropagation());
+
+    slider.addEventListener('input', () => {
+      const value = parseFloat(slider.value);
+      state.cardOpacityOverride[card] = value;
+      state.cardOpacityOverridePhotoUrl = lastSampledPhotoUrl
+        || (state.cachedPhoto && state.cachedPhoto.url)
+        || state.cardOpacityOverridePhotoUrl;
+      saveState();
+      applyCardOpacity(card);
+    });
+
+    // Double-click the dial to clear override and re-enable auto
+    dial.addEventListener('dblclick', (e) => {
+      e.stopPropagation();
+      state.cardOpacityOverride[card] = null;
+      saveState();
+      applyCardOpacity(card);
+    });
+  });
+
+  // Click outside to collapse
+  document.addEventListener('click', () => {
+    document.querySelectorAll('.opacity-control.expanded').forEach((c) => {
+      c.classList.remove('expanded');
+    });
+  });
+
+  applyAllCardOpacities();
+}
+
+// ─── Auto-Contrast (WCAG luminance) ───
+
+let lastSampledPhotoUrl = null;
+let lastSampledImage = null;
+
+function srgbToLinear(c) {
+  const v = c / 255;
+  return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+}
+
+function relativeLuminance(r, g, b) {
+  return 0.2126 * srgbToLinear(r) + 0.7152 * srgbToLinear(g) + 0.0722 * srgbToLinear(b);
+}
+
+function computeMinAlphaForContrast(rAvg, gAvg, bAvg, targetRatio) {
+  // White text has L=1. Black overlay composited in sRGB space scales each
+  // channel by (1 - alpha): p_eff = (1 - alpha) * p_img. The luminance
+  // function is non-linear, so we search for the smallest alpha that
+  // achieves the target contrast ratio against white.
+  const maxAllowedL = 1.05 / targetRatio - 0.05;
+  const baseL = relativeLuminance(rAvg, gAvg, bAvg);
+  if (baseL <= maxAllowedL) return 0;
+  let lo = 0;
+  let hi = 0.95;
+  for (let i = 0; i < 24; i++) {
+    const mid = (lo + hi) / 2;
+    const f = 1 - mid;
+    const l = relativeLuminance(rAvg * f, gAvg * f, bAvg * f);
+    if (l <= maxAllowedL) hi = mid;
+    else lo = mid;
+  }
+  return hi;
+}
+
+function mapRectToImageCoords(rect, imgW, imgH, viewportW, viewportH) {
+  // Mirrors background-size: cover, background-position: center
+  const scale = Math.max(viewportW / imgW, viewportH / imgH);
+  const drawnW = imgW * scale;
+  const drawnH = imgH * scale;
+  const offsetX = (viewportW - drawnW) / 2;
+  const offsetY = (viewportH - drawnH) / 2;
+  const sx = Math.max(0, (rect.left - offsetX) / scale);
+  const sy = Math.max(0, (rect.top - offsetY) / scale);
+  const sw = Math.min(imgW - sx, rect.width / scale);
+  const sh = Math.min(imgH - sy, rect.height / scale);
+  return { sx, sy, sw, sh };
+}
+
+function sampleAverageColor(img, rect) {
+  const viewportW = window.innerWidth;
+  const viewportH = window.innerHeight;
+  const { sx, sy, sw, sh } = mapRectToImageCoords(
+    rect, img.naturalWidth, img.naturalHeight, viewportW, viewportH
+  );
+  if (sw <= 0 || sh <= 0) return null;
+
+  // Downsample for speed: cap target canvas area
+  const targetW = Math.max(8, Math.min(64, Math.round(sw / 16)));
+  const targetH = Math.max(8, Math.min(64, Math.round(sh / 16)));
+
+  const canvas = document.createElement('canvas');
+  canvas.width = targetW;
+  canvas.height = targetH;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  try {
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, targetW, targetH);
+    const data = ctx.getImageData(0, 0, targetW, targetH).data;
+    let r = 0, g = 0, b = 0, count = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      r += data[i];
+      g += data[i + 1];
+      b += data[i + 2];
+      count++;
+    }
+    if (count === 0) return null;
+    return { r: r / count, g: g / count, b: b / count };
+  } catch (err) {
+    // Tainted canvas (CORS) or other failure
+    return null;
+  }
+}
+
+function runAutoContrastFor(img) {
+  if (!img || !img.complete || !img.naturalWidth) return;
+  Object.keys(CARD_SELECTOR).forEach((card) => {
+    const el = getCardElement(card);
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+    const color = sampleAverageColor(img, rect);
+    if (color === null) return;
+    const alphaMin = computeMinAlphaForContrast(
+      color.r, color.g, color.b, CARD_CONTRAST_TARGET[card]
+    );
+    autoCardOpacity[card] = Math.max(CARD_DEFAULT_OPACITY[card], alphaMin);
+    applyCardOpacity(card);
+  });
+}
+
+let resizeTimer = null;
+function initContrastResize() {
+  window.addEventListener('resize', () => {
+    if (resizeTimer) clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      if (lastSampledImage) runAutoContrastFor(lastSampledImage);
+    }, 150);
+  });
+}
+
 // ─── Toggle Icons & Proximity Fade ───
 
 function initToggles() {
@@ -764,6 +987,8 @@ function initToggles() {
 // ─── Initialize ───
 
 document.addEventListener('DOMContentLoaded', () => {
+  initOpacityControls();
+  initContrastResize();
   loadDailyPhoto();
   initGreeting();
   updateDateDisplay();
