@@ -42,7 +42,16 @@
 
     <!-- Center: Greeting + Date + Time + One Thing -->
     <section id="time-section" class="center-content">
-      <div class="center-inner">
+      <div class="center-inner" id="center-inner">
+        <div class="opacity-control" data-card="clock">
+          <button class="opacity-dial" type="button" aria-label="Adjust background opacity" title="Adjust background opacity">
+            <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="12" r="11" fill="none" stroke="currentColor" stroke-width="1.5"></circle>
+              <path d="M12 1 A11 11 0 0 1 12 23 Z" fill="currentColor"></path>
+            </svg>
+          </button>
+          <input type="range" class="opacity-slider" min="0" max="0.85" step="0.01" aria-label="Background opacity">
+        </div>
         <div id="greeting-section" class="greeting-section"></div>
         <div id="date-display" class="date-display"></div>
         <div id="weather-display" class="weather-display"></div>
@@ -53,7 +62,18 @@
 
     <!-- Bottom area -->
     <section class="bottom-content">
-      <div id="todo-section" class="todo-section"></div>
+      <div id="todo-section" class="todo-section">
+        <div class="opacity-control" data-card="todos">
+          <button class="opacity-dial" type="button" aria-label="Adjust background opacity" title="Adjust background opacity">
+            <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="12" r="11" fill="none" stroke="currentColor" stroke-width="1.5"></circle>
+              <path d="M12 1 A11 11 0 0 1 12 23 Z" fill="currentColor"></path>
+            </svg>
+          </button>
+          <input type="range" class="opacity-slider" min="0" max="0.85" step="0.01" aria-label="Background opacity">
+        </div>
+        <div class="todo-content" id="todo-content"></div>
+      </div>
     </section>
   </main>
 
