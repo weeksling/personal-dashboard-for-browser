@@ -193,17 +193,19 @@ function updateDateDisplay() {
 // ─── Clock ───
 
 function initClock() {
+  applyTimeSectionVisibility();
   updateClock();
   setInterval(updateClock, 1000);
 }
 
+function applyTimeSectionVisibility() {
+  const section = document.getElementById('time-section');
+  if (!section) return;
+  section.classList.toggle('hidden', !state.showTime);
+}
+
 function updateClock() {
   const clock = document.getElementById('clock');
-  if (!state.showTime) {
-    clock.classList.add('hidden');
-    return;
-  }
-  clock.classList.remove('hidden');
 
   const now = new Date();
   const hours = now.getHours() % 12 || 12;
@@ -743,11 +745,11 @@ function initToggles() {
     }
   });
 
-  // Toggle time
+  // Toggle time section
   document.getElementById('toggle-time').addEventListener('click', () => {
     state.showTime = !state.showTime;
     saveState();
-    updateClock();
+    applyTimeSectionVisibility();
   });
 
   // Toggle todos
